@@ -26,6 +26,11 @@ import type { Dictionary } from '@/types'
 
 export interface RowEditorProps {
   row?: Dictionary<any>
+  /**
+   * 'duplicate' pre-fills the form from `row` (e.g. from "Duplicate row") while still
+   * treating the submission as an INSERT rather than an UPDATE of that row.
+   */
+  mode?: 'edit' | 'duplicate'
   selectedTable: PGTable
   visible: boolean
   editable?: boolean
@@ -38,6 +43,7 @@ const formId = 'row-editor-panel'
 
 export const RowEditor = ({
   row,
+  mode,
   selectedTable,
   visible = false,
   editable = true,
@@ -58,7 +64,8 @@ export const RowEditor = ({
   const [isSelectingForeignKey, setIsSelectingForeignKey] = useState<boolean>(false)
   const [referenceRow, setReferenceRow] = useState<RowField>()
 
-  const isNewRecord = row === undefined
+  const isDuplicating = mode === 'duplicate' && row !== undefined
+  const isNewRecord = row === undefined || isDuplicating
   const isEditingText = selectedValueForTextEdit !== undefined
   const isEditingJson = selectedValueForJsonEdit !== undefined
 
@@ -179,7 +186,13 @@ export const RowEditor = ({
       size="large"
       key="RowEditor"
       visible={visible}
-      header={<HeaderTitle isNewRecord={isNewRecord} tableName={selectedTable.name} />}
+      header={
+        <HeaderTitle
+          isNewRecord={isNewRecord}
+          isDuplicating={isDuplicating}
+          tableName={selectedTable.name}
+        />
+      }
       className={`transition-all duration-100 ease-in ${
         isEditingText || isEditingJson || isSelectingForeignKey ? ' mr-32' : ''
       }`}

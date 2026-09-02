@@ -1,4 +1,4 @@
-import { Copy, Edit, ListFilter, Trash } from 'lucide-react'
+import { Copy, CopyPlus, Edit, ListFilter, Trash } from 'lucide-react'
 import { useCallback } from 'react'
 import { toast } from 'sonner'
 import { copyToClipboard, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from 'ui'
@@ -7,6 +7,7 @@ import { useTableRowOperations } from '../../hooks/useTableRowOperations'
 import { formatClipboardValue } from '../../utils/common'
 import { buildFilterFromCellValue, isComplexValue } from '../header/filter/FilterPopoverNew.utils'
 import type { SupaRow } from '@/components/grid/types'
+import { isTableLike } from '@/data/table-editor/table-editor-types'
 import { useTableEditorStateSnapshot } from '@/state/table-editor'
 import { useTableEditorTableStateSnapshot } from '@/state/table-editor-table'
 
@@ -35,6 +36,29 @@ export const RowContextMenuContent = ({
   const onEditRowClick = useCallback(() => {
     tableEditorSnap.onEditRow(row)
   }, [row, tableEditorSnap])
+
+  const onDuplicateRowClick = useCallback(() => {
+    if (!row) {
+      toast.error('Row not found')
+      return
+    }
+
+    if (!isTableLike(snap.originalTable)) {
+      toast.error('Duplicating rows is only supported for tables')
+      return
+    }
+
+    // Strip the grid's internal row index and any primary key values so the
+    // side panel opens in "insert" mode and the database assigns fresh
+    // identifiers instead of colliding with the original row.
+    const { idx, ...rowValues } = row as SupaRow & { idx?: number }
+    const duplicateRowData: Record<string, any> = { ...rowValues }
+    snap.originalTable.primary_keys.forEach(({ name }) => {
+      delete duplicateRowData[name]
+    })
+
+    tableEditorSnap.onDuplicateRow(duplicateRowData)
+  }, [row, snap.originalTable, tableEditorSnap])
 
   const onCopyCellContent = useCallback(() => {
     if (!activeCellPosition) return
@@ -119,6 +143,10 @@ export const RowContextMenuContent = ({
           <DropdownMenuItem className="gap-x-2" onSelect={onEditRowClick}>
             <Edit size={12} />
             <span className="text-xs">Edit row</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="gap-x-2" onSelect={onDuplicateRowClick}>
+            <CopyPlus size={12} />
+            <span className="text-xs">Duplicate row</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem className="gap-x-2" onSelect={onDeleteRow}>
