@@ -20,6 +20,32 @@ import { useGetImpersonatedRoleState } from '@/state/role-impersonation-state'
 import { useTableEditorStateSnapshot } from '@/state/table-editor'
 import type { Dictionary } from '@/types'
 
+/**
+ * Turns a raw Postgres error into a friendlier message. When `isDuplicating` is true,
+ * the wording is adjusted to make clear the failure came from copying an existing row
+ * (e.g. a UNIQUE constraint that the original row already satisfied).
+ */
+function getFriendlyRowInsertErrorMessage(error: unknown, isDuplicating: boolean): string {
+  const message = (error as { message?: string })?.message ?? String(error)
+  if (!isDuplicating) return message
+
+  const lower = message.toLowerCase()
+
+  if (lower.includes('duplicate key value violates unique constraint')) {
+    return `Couldn't duplicate this row: one of its values must be unique, and the copy conflicts with the original. Edit the highlighted column before saving.`
+  }
+
+  if (lower.includes('violates foreign key constraint')) {
+    return `Couldn't duplicate this row: it references a value that no longer exists. Check the foreign key columns before saving.`
+  }
+
+  if (lower.includes('violates not-null constraint')) {
+    return `Couldn't duplicate this row: a required column has no value. This can happen when a column is only auto-generated on insert.`
+  }
+
+  return message
+}
+
 export interface EditCellParams {
   table: Entity
   tableId: number
@@ -38,6 +64,10 @@ export interface AddRowParams {
   tableId: number
   rowData: PendingAddRow
   enumArrayColumns?: string[]
+  /** True when this insert originated from "Duplicate row", used to tailor error/success messaging */
+  isDuplicating?: boolean
+  /** Overrides the default "Successfully created row" toast, e.g. "Row duplicated successfully" */
+  successMessage?: string
 }
 
 export interface UpdateRowParams {
@@ -111,11 +141,11 @@ export function useTableRowOperations() {
     }
   )
 
-  // Non-queue mutation for row creation
+  // Non-queue mutation for row creation.
+  // Success/error toasts are handled in `addRow` itself (not here) so the message can be
+  // tailored per call — e.g. "Row duplicated successfully" vs "Successfully created row".
   const { mutateAsync: mutateCreateTableRow } = useTableRowCreateMutation({
-    onSuccess() {
-      toast.success('Successfully created row')
-    },
+    onError: () => {},
   })
 
   const editCell = useCallback(
@@ -206,14 +236,20 @@ export function useTableRowOperations() {
 
       if (!project) return
 
-      await mutateCreateTableRow({
-        projectRef: project.ref,
-        connectionString: project.connectionString,
-        table: params.table,
-        payload: params.rowData,
-        enumArrayColumns: params.enumArrayColumns ?? [],
-        roleImpersonationState: getImpersonatedRoleState(),
-      })
+      try {
+        await mutateCreateTableRow({
+          projectRef: project.ref,
+          connectionString: project.connectionString,
+          table: params.table,
+          payload: params.rowData,
+          enumArrayColumns: params.enumArrayColumns ?? [],
+          roleImpersonationState: getImpersonatedRoleState(),
+        })
+        toast.success(params.successMessage ?? 'Successfully created row')
+      } catch (error) {
+        toast.error(getFriendlyRowInsertErrorMessage(error, params.isDuplicating ?? false))
+        throw error
+      }
     },
     [isQueueEnabled, project, tableEditorSnap, mutateCreateTableRow, getImpersonatedRoleState]
   )

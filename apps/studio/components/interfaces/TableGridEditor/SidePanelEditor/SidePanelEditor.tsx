@@ -249,12 +249,17 @@ export const SidePanelEditor = ({
 
     let saveRowError: Error | undefined
     if (isNewRecord) {
+      const isDuplicatingRow = snap.sidePanel?.type === 'row' && snap.sidePanel.mode === 'duplicate'
       try {
         await addRow({
           tableId: selectedTable.id,
           table: selectedTable as unknown as Entity,
           rowData: payload,
           enumArrayColumns,
+          isDuplicating: isDuplicatingRow,
+          successMessage: isDuplicatingRow
+            ? 'Row duplicated successfully'
+            : 'Successfully created row',
         })
       } catch (error: any) {
         saveRowError = error
